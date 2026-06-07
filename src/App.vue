@@ -70,8 +70,10 @@ const scanError = ref(null)
 
 let unsubProgress = null
 let unsubDone = null
+let unsubError = null
 let flushTimer = null
 let pendingBatch = []
+let activeScanId = null
 
 // 跨平台路径过滤：兼容 Windows 反斜杠和 Unix 正斜杠
 const filteredImages = computed(() => {
@@ -110,6 +112,10 @@ function cleanupSubscriptions() {
     unsubDone()
     unsubDone = null
   }
+  if (unsubError) {
+    unsubError()
+    unsubError = null
+  }
   if (flushTimer) {
     clearTimeout(flushTimer)
     flushTimer = null
@@ -117,12 +123,22 @@ function cleanupSubscriptions() {
   pendingBatch = []
 }
 
+function createScanId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 async function scanFolder(folder) {
   if (!folder) return
+
+  if (activeScanId) {
+    window.fileAPI.cancelScan(activeScanId)
+  }
 
   // 清理旧订阅和状态
   cleanupSubscriptions()
 
+  const scanId = createScanId()
+  activeScanId = scanId
   scanning.value = true
   scanError.value = null
   currentFolder.value = folder
@@ -133,11 +149,13 @@ async function scanFolder(folder) {
 
   // 订阅流式事件
   unsubProgress = window.fileAPI.onScanProgress((data) => {
+    if (data.scanId !== activeScanId) return
     queueImages(data.images)
     totalCount.value = data.totalSoFar
   })
 
   unsubDone = window.fileAPI.onScanDone((data) => {
+    if (data.scanId !== activeScanId) return
     // 先刷新剩余数据
     if (flushTimer) {
       clearTimeout(flushTimer)
@@ -147,11 +165,20 @@ async function scanFolder(folder) {
     scanning.value = false
     totalCount.value = data.totalCount
     folderTree.value = data.folderTree
+    activeScanId = null
+    cleanupSubscriptions()
+  })
+
+  unsubError = window.fileAPI.onScanError((data) => {
+    if (data.scanId !== activeScanId) return
+    scanning.value = false
+    scanError.value = data.error || '扫描失败'
+    activeScanId = null
     cleanupSubscriptions()
   })
 
   // 启动流式扫描
-  window.fileAPI.startScanStream(folder)
+  window.fileAPI.startScanStream(scanId, folder)
 }
 
 async function pickAndScanFolder() {
@@ -188,6 +215,10 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (activeScanId) {
+    window.fileAPI.cancelScan(activeScanId)
+    activeScanId = null
+  }
   cleanupSubscriptions()
 })
 </script>

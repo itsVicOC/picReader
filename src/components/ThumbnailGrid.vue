@@ -49,11 +49,14 @@ const itemSecondarySize = ref(MIN_CARD_WIDTH)
 const thumbnailUrls = ref({})
 
 let cancelLoading = false
+let loadGeneration = 0
 // 使用响应式对象跟踪加载状态，template 中可正确响应
 const loadingStates = ref({})
 const CONCURRENCY = 8
 const BUFFER = 16 // 可见区域上下各预加载 16 个（grid 模式下范围更大）
 const INITIAL_BATCH = 48 // grid 模式下初始加载更多
+const CACHE_LIMIT = 2000
+const thumbnailUrlCache = new Map()
 
 let visibleStart = 0
 let visibleEnd = 0
@@ -82,7 +85,32 @@ function isLoading(path) {
   return !!loadingStates.value[path]
 }
 
-async function loadVisibleThumbnails() {
+function rememberThumbnailUrl(imagePath, url) {
+  if (thumbnailUrlCache.has(imagePath)) {
+    thumbnailUrlCache.delete(imagePath)
+  }
+  thumbnailUrlCache.set(imagePath, url)
+
+  while (thumbnailUrlCache.size > CACHE_LIMIT) {
+    const oldestPath = thumbnailUrlCache.keys().next().value
+    thumbnailUrlCache.delete(oldestPath)
+  }
+}
+
+function hydrateThumbnailUrls(images) {
+  const urls = {}
+  for (const img of images) {
+    const cachedUrl = thumbnailUrlCache.get(img.path)
+    if (cachedUrl) {
+      thumbnailUrlCache.delete(img.path)
+      thumbnailUrlCache.set(img.path, cachedUrl)
+      urls[img.path] = cachedUrl
+    }
+  }
+  thumbnailUrls.value = urls
+}
+
+async function loadVisibleThumbnails(generation = loadGeneration) {
   if (cancelLoading) return
 
   let end = visibleEnd
@@ -94,7 +122,7 @@ async function loadVisibleThumbnails() {
   const toLoad = []
   for (let i = visibleStart; i <= end && i < props.images.length; i++) {
     const img = props.images[i]
-    if (!thumbnailUrls.value[img.path] && !isLoading(img.path)) {
+    if (!thumbnailUrls.value[img.path] && !thumbnailUrlCache.has(img.path) && !isLoading(img.path)) {
       toLoad.push(img)
     }
   }
@@ -106,18 +134,20 @@ async function loadVisibleThumbnails() {
   for (const img of batch) {
     if (cancelLoading) return
     loadingStates.value[img.path] = true
-    loadThumbnail(img).finally(() => {
+    loadThumbnail(img, generation).finally(() => {
+      if (generation !== loadGeneration) return
       delete loadingStates.value[img.path]
       // 加载完成后继续检查是否需要加载更多
-      loadVisibleThumbnails()
+      loadVisibleThumbnails(generation)
     })
   }
 }
 
-async function loadThumbnail(img) {
+async function loadThumbnail(img, generation) {
   try {
     const url = await window.fileAPI.getThumbnailUrl(img.path)
-    if (cancelLoading) return
+    if (cancelLoading || generation !== loadGeneration) return
+    rememberThumbnailUrl(img.path, url)
     thumbnailUrls.value[img.path] = url
   } catch (e) {
     console.warn('Thumbnail failed:', img.name, e)
@@ -160,21 +190,21 @@ watch(
     if (!newImages) return
 
     cancelLoading = true
+    loadGeneration++
     if (loadTimer) {
       clearTimeout(loadTimer)
       loadTimer = null
     }
     await nextTick()
 
-    // 清理旧状态的缩略图 URL（释放引用）
-    thumbnailUrls.value = {}
+    hydrateThumbnailUrls(newImages)
     loadingStates.value = {}
     visibleStart = 0
     visibleEnd = 0
 
     cancelLoading = false
     if (newImages.length > 0) {
-      loadVisibleThumbnails()
+      loadVisibleThumbnails(loadGeneration)
     }
 
     // 图片变化后重新计算布局
@@ -185,6 +215,7 @@ watch(
 
 onUnmounted(() => {
   cancelLoading = true
+  loadGeneration++
   if (loadTimer) {
     clearTimeout(loadTimer)
     loadTimer = null

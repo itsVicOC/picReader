@@ -21,7 +21,7 @@
       <button @click="close">✕</button>
     </div>
     <div class="slideshow-counter">
-      {{ currentIndex + 1 }} / {{ images.length }}
+      {{ displayIndex }} / {{ images.length }}
     </div>
   </div>
 </template>
@@ -36,42 +36,59 @@ const props = defineProps({
 
 const emit = defineEmits(['close'])
 
-const currentIndex = ref(Math.min(Math.max(props.startIndex ?? 0, 0), props.images.length - 1))
-const isPlaying = ref(true)
+function normalizeIndex(index, length) {
+  if (length <= 0) return 0
+  return Math.min(Math.max(index ?? 0, 0), length - 1)
+}
+
+const currentIndex = ref(normalizeIndex(props.startIndex, props.images.length))
+const isPlaying = ref(false)
 const currentImageURL = ref(null)
 const imageError = ref(false)
 let intervalId = null
+let loadGeneration = 0
 const SLIDESHOW_INTERVAL = 3000
 const PRELOAD_COUNT = 2 // 前后各预加载 2 张
 
 const currentImage = computed(() => props.images[currentIndex.value])
+const displayIndex = computed(() => (props.images.length > 0 ? currentIndex.value + 1 : 0))
 
-async function loadImage(imagePath) {
+async function loadImage(imagePath, generation = loadGeneration) {
   currentImageURL.value = null
   imageError.value = false
+  if (!imagePath) return
+
   try {
     const url = await window.fileAPI.getFullImageUrl(imagePath)
+    if (generation !== loadGeneration) return
     currentImageURL.value = url
   } catch {
+    if (generation !== loadGeneration) return
     imageError.value = true
   }
 }
 
 function next() {
+  if (props.images.length === 0) return
   currentIndex.value = (currentIndex.value + 1) % props.images.length
 }
 
 function prev() {
+  if (props.images.length === 0) return
   currentIndex.value = (currentIndex.value - 1 + props.images.length) % props.images.length
 }
 
 function togglePlay() {
+  if (props.images.length <= 1) {
+    isPlaying.value = false
+    stopInterval()
+    return
+  }
   isPlaying.value = !isPlaying.value
-  if (isPlaying.value) startInterval()
-  else stopInterval()
 }
 
 function startInterval() {
+  if (props.images.length <= 1) return
   stopInterval()
   intervalId = setInterval(next, SLIDESHOW_INTERVAL)
 }
@@ -118,6 +135,8 @@ function onImageError() {
 // 预加载当前图片周围的几张图片
 async function preloadSurroundingImages() {
   const len = props.images.length
+  if (len <= 1) return
+
   for (let offset = 1; offset <= PRELOAD_COUNT; offset++) {
     const nextIdx = (currentIndex.value + offset) % len
     const prevIdx = (currentIndex.value - offset + len) % len
@@ -141,14 +160,39 @@ async function preloadImage(imagePath) {
 }
 
 watch(currentImage, (img) => {
-  if (img) loadImage(img.path)
+  loadGeneration++
+  if (img) {
+    loadImage(img.path, loadGeneration)
+  } else {
+    currentImageURL.value = null
+    imageError.value = false
+  }
+})
+
+watch(
+  () => props.images.length,
+  (length) => {
+    currentIndex.value = normalizeIndex(currentIndex.value, length)
+    if (length <= 1) {
+      isPlaying.value = false
+      stopInterval()
+    }
+  }
+)
+
+watch(isPlaying, (playing) => {
+  if (playing) {
+    startInterval()
+  } else {
+    stopInterval()
+  }
 })
 
 onMounted(() => {
   if (currentImage.value) {
-    loadImage(currentImage.value.path)
+    loadGeneration++
+    loadImage(currentImage.value.path, loadGeneration)
   }
-  if (isPlaying.value) startInterval()
   window.addEventListener('keydown', handleKeydown)
 })
 

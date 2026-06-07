@@ -1,7 +1,8 @@
-<html>
-<head><title>404 Not Found</title></head>
-<body bgcolor="white">
-<center><h1>404 Not Found</h1></center>
-<hr><center>nginx/1.14.0 (Ubuntu)</center>
-</body>
-</html>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>PicReader</title>
+  <rect width="512" height="512" rx="96" fill="#17182f"/>
+  <path d="M112 136c0-22.1 17.9-40 40-40h208c22.1 0 40 17.9 40 40v240c0 22.1-17.9 40-40 40H152c-22.1 0-40-17.9-40-40V136z" fill="#242654"/>
+  <path d="M144 348l74-82 52 58 38-42 60 66v24H144v-24z" fill="#82d4a8"/>
+  <circle cx="324" cy="178" r="34" fill="#ffd166"/>
+  <path d="M160 120h192c13.3 0 24 10.7 24 24v224c0 13.3-10.7 24-24 24H160c-13.3 0-24-10.7-24-24V144c0-13.3 10.7-24 24-24zm0 24v224h192V144H160z" fill="#eef1ff"/>
+</svg>

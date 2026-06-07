@@ -3,9 +3,7 @@
     <h3>文件夹</h3>
     <ul class="folder-tree">
       <FolderNode
-        v-for="child in tree.children"
-        :key="child.path"
-        :node="child"
+        :node="tree"
         :selected="selectedFolder"
         @select="$emit('select', $event)"
       />

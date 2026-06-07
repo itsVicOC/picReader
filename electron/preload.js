@@ -4,8 +4,12 @@ contextBridge.exposeInMainWorld('fileAPI', {
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   getLastFolder: () => ipcRenderer.invoke('get-last-folder'),
 
-  startScanStream: (folderPath) => {
-    ipcRenderer.send('scan-folder-stream', folderPath)
+  startScanStream: (scanId, folderPath) => {
+    ipcRenderer.send('scan-folder-stream', { scanId, folderPath })
+  },
+
+  cancelScan: (scanId) => {
+    ipcRenderer.send('cancel-scan', scanId)
   },
 
   onScanProgress: (callback) => {
@@ -18,6 +22,12 @@ contextBridge.exposeInMainWorld('fileAPI', {
     const handler = (event, data) => callback(data)
     ipcRenderer.on('scan-folder-done', handler)
     return () => ipcRenderer.removeListener('scan-folder-done', handler)
+  },
+
+  onScanError: (callback) => {
+    const handler = (event, data) => callback(data)
+    ipcRenderer.on('scan-folder-error', handler)
+    return () => ipcRenderer.removeListener('scan-folder-error', handler)
   },
 
   getThumbnailUrl: (imagePath) => ipcRenderer.invoke('get-thumbnail-url', imagePath),
